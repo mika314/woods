@@ -1,0 +1,3 @@
+localRepository="../coddle_repo"
+shared=true
+targetDir="../house_in_the_woods"
