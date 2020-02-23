@@ -1,3 +1,73 @@
+#include "private_key.hpp"
+#include <iostream>
+#include <log/log.hpp>
+#include <net/conn.hpp>
+#include <net/server.hpp>
+#include <proto/proto.hpp>
+#include <sched/sched.hpp>
+#include <ser/overloaded.hpp>
+
 int main()
 {
+  static_assert(Internal::IsSerializableClassV<Woods::ClientState>);
+  Sched sched;
+  std::unordered_map<Net::Conn *, Woods::ClientState> clients;
+  Net::Server server(sched, PrivateKey, 42069, [&clients](Net::Conn *conn) {
+    std::cout << "new connection: " << conn << std::endl;
+    auto ret = clients.emplace(conn, Woods::ClientState{reinterpret_cast<std::uintptr_t>(conn)});
+    auto &client = ret.first->second;
+    conn->onRecv = [&client, conn, &clients](const char *buff, size_t sz) {
+      WoodsProto proto;
+      IStrm strm(buff, buff + sz);
+      proto.deser(
+        strm,
+        overloaded{[&client, &clients, conn](const Woods::ClientState &state) {
+                     if (!state.audio.empty())
+                     {
+                       for (auto &peer : clients)
+                       {
+                         if (peer.first == conn)
+                           continue;
+                         Woods::PeersState peersState;
+                         peersState.push_back(state);
+                         WoodsProto proto;
+                         OStrm strm;
+                         proto.ser(strm, peersState);
+
+                         peer.first->send(strm.str().data(), strm.str().size());
+                       }
+                     }
+                     client = state;
+                     client.audio.clear();
+                   },
+                   [](const Woods::PeersState &value) { LOG("Unexpected", typeid(value).name()); }});
+    };
+    conn->onDisconn = [conn, &clients] {
+      LOG("Peer", conn, "is disconnected");
+      clients.erase(conn);
+    };
+  });
+
+  auto updateTimer = sched.regTimer(
+    [&clients]() {
+      for (auto &client : clients)
+      {
+        Woods::PeersState peersState;
+        for (auto &peer : clients)
+        {
+          if (peer.first == client.first)
+            continue;
+          peersState.push_back(peer.second);
+        }
+        WoodsProto proto;
+        OStrm strm;
+        proto.ser(strm, peersState);
+
+        client.first->send(strm.str().data(), strm.str().size());
+      }
+    },
+    std::chrono::milliseconds{1000 / 100},
+    true);
+  for (;;)
+    sched.process();
 }

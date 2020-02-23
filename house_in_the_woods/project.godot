@@ -19,6 +19,11 @@ config/name="house in the woods"
 run/main_scene="res://game_scene.tscn"
 config/icon="res://icon.png"
 
+[audio]
+
+enable_audio_input=true
+mix_rate=48000
+
 [input]
 
 ui_left={

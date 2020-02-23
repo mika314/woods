@@ -697,3 +697,10 @@ path="../pi"
 includes=[
   "pi/pi.hpp"
 ]
+
+[[library]]
+type="lib"
+name="opus"
+includes=[
+  "opus/opus.h"
+]

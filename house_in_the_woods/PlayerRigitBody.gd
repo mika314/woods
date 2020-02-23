@@ -20,6 +20,13 @@ func _process(delta):
 		dir.z -= 1
 	if Input.is_action_pressed("ui_select"):
 		dir.y += 1
+	if Input.is_action_just_pressed("ui_accept"):
+		if Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED:
+			Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+		else:
+			Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+		
+
 	dir = dir.rotated(Vector3(0, 1, 0), rotation.y)
 	apply_impulse(Vector3(0, 0, 0), dir * FORCE)
 	if translation.y < -100:
