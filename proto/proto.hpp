@@ -20,7 +20,7 @@ namespace Woods
   struct ClientState
   {
     ClientState(uint64_t id = 0) : id(id) {}
-    uint64_t id;
+    uint64_t id{};
     Vec3 pos;
     Vec3 rot;
     std::vector<unsigned char> audio;

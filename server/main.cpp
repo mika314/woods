@@ -19,28 +19,31 @@ int main()
     conn->onRecv = [&client, conn, &clients](const char *buff, size_t sz) {
       WoodsProto proto;
       IStrm strm(buff, buff + sz);
-      proto.deser(
-        strm,
-        overloaded{[&client, &clients, conn](const Woods::ClientState &state) {
-                     if (!state.audio.empty())
-                     {
-                       for (auto &peer : clients)
-                       {
-                         if (peer.first == conn)
-                           continue;
-                         Woods::PeersState peersState;
-                         peersState.push_back(state);
-                         WoodsProto proto;
-                         OStrm strm;
-                         proto.ser(strm, peersState);
+      proto.deser(strm,
+                  overloaded{[&client, &clients, conn](const Woods::ClientState &state) {
+                               auto tmpId = client.id;
+                               client = state;
+                               client.id = tmpId;
+                               if (!client.audio.empty())
+                               {
+                                 for (auto &peer : clients)
+                                 {
+                                   if (peer.first == conn)
+                                     continue;
+                                   Woods::PeersState peersState;
+                                   peersState.push_back(client);
+                                   WoodsProto proto;
+                                   OStrm strm;
+                                   proto.ser(strm, peersState);
 
-                         peer.first->send(strm.str().data(), strm.str().size());
-                       }
-                     }
-                     client = state;
-                     client.audio.clear();
-                   },
-                   [](const Woods::PeersState &value) { LOG("Unexpected", typeid(value).name()); }});
+                                   peer.first->send(strm.str().data(), strm.str().size());
+                                 }
+                               }
+                               client.audio.clear();
+                             },
+                             [](const Woods::PeersState &value) {
+                               LOG("Unexpected", typeid(value).name());
+                             }});
     };
     conn->onDisconn = [conn, &clients] {
       LOG("Peer", conn, "is disconnected");

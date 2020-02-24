@@ -25,7 +25,10 @@ func _process(delta):
 			Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 		else:
 			Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
-		
+	if Input.is_action_just_pressed("ui_focus_next"):
+			var idx = AudioServer.get_bus_index("Record")
+			var effect = AudioServer.get_bus_effect(idx, 0)
+			effect.set_recording_active(!effect.is_recording_active())
 
 	dir = dir.rotated(Vector3(0, 1, 0), rotation.y)
 	apply_impulse(Vector3(0, 0, 0), dir * FORCE)

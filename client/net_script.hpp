@@ -1,12 +1,14 @@
 #pragma once
+#include "peer.hpp"
+#include <AudioEffectRecord.hpp>
 #include <Godot.hpp>
 #include <RigidBody.hpp>
 #include <Spatial.hpp>
+#include <cstdint>
 #include <net/conn.hpp>
+#include <opus/opus.h>
 #include <proto/proto.hpp>
 #include <sched/sched.hpp>
-#include <opus/opus.h>
-#include <AudioEffectRecord.hpp>
 
 class NetScript : public godot::Spatial
 {
@@ -17,7 +19,7 @@ public:
   ~NetScript();
   void _init();
   void _ready();
-  void _process(float delta);
+  void _physics_process(float delta);
 
   void operator()(const Woods::PeersState &);
   void operator()(const Woods::ClientState &);
@@ -26,9 +28,8 @@ private:
   Sched sched;
   std::unique_ptr<Net::Conn> conn;
   bool isConnected{false};
-  std::vector<godot::RigidBody *> peers;
+  std::unordered_map<uint64_t, Peer> peers;
   OpusEncoder *enc{nullptr};
-  godot::AudioEffectRecord *effect{nullptr};
-  float currentTime{0};
+  float currentTime{-1.0f};
   std::vector<opus_int16> audioBuff;
 };

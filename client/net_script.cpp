@@ -1,11 +1,15 @@
 #include "net_script.hpp"
+#include "frame_size.hpp"
 #include "public_key.hpp"
 #include <AudioServer.hpp>
+#include <AudioStreamGeneratorPlayback.hpp>
+#include <AudioStreamPlayer3D.hpp>
+#include <CSGBox.hpp>
 #include <array>
 
 void NetScript::_register_methods()
 {
-  register_method("_process", &NetScript::_process);
+  register_method("_physics_process", &NetScript::_physics_process);
   register_method("_ready", &NetScript::_ready);
 }
 
@@ -31,7 +35,7 @@ void NetScript::_ready()
   Godot::print("network native script is ready");
 }
 
-void NetScript::_process(float delta)
+void NetScript::_physics_process(float delta)
 {
   if (!conn)
   {
@@ -41,7 +45,7 @@ void NetScript::_process(float delta)
       isConnected = true;
       auto audioServer = AudioServer::get_singleton();
       auto idx = audioServer->get_bus_index("Record");
-      effect = static_cast<AudioEffectRecord *>(audioServer->get_bus_effect(idx, 0).ptr());
+      auto effect = static_cast<AudioEffectRecord *>(audioServer->get_bus_effect(idx, 0).ptr());
       effect->set_recording_active(true);
     };
     conn->onRecv = [this](const char *buff, size_t sz) {
@@ -52,11 +56,20 @@ void NetScript::_process(float delta)
     conn->onDisconn = [this]() {
       Godot::print("on disconnect");
       isConnected = false;
-      if (effect)
+      auto audioServer = AudioServer::get_singleton();
+      auto idx = audioServer->get_bus_index("Record");
+      if (auto effect = static_cast<AudioEffectRecord *>(audioServer->get_bus_effect(idx, 0).ptr()))
         effect->set_recording_active(false);
     };
   }
   sched.processNoWait();
+  for (auto &peer : peers)
+    peer.second.process();
+  auto audioServer = AudioServer::get_singleton();
+  auto idx = audioServer->get_bus_index("Record");
+  auto effect = static_cast<AudioEffectRecord *>(audioServer->get_bus_effect(idx, 0).ptr());
+  if (!effect)
+    return;
   if (!isConnected)
     return;
 
@@ -71,7 +84,8 @@ void NetScript::_process(float delta)
   state.rot.y = rotation.y;
   state.rot.z = rotation.z;
   currentTime += delta;
-  if (currentTime < 0.1)
+  const auto FrameDuarion = 0.04f;
+  if (currentTime < FrameDuarion)
   {
     OStrm strm;
     WoodsProto proto;
@@ -79,9 +93,9 @@ void NetScript::_process(float delta)
     conn->send(strm.str().data(), strm.str().size());
     return;
   }
-  currentTime -= 0.1;
+  currentTime -= FrameDuarion;
   auto recording = effect->get_recording();
-  if (!recording.ptr())
+  if (!recording.ptr() || !effect->is_recording_active())
   {
     OStrm strm;
     WoodsProto proto;
@@ -89,7 +103,6 @@ void NetScript::_process(float delta)
     conn->send(strm.str().data(), strm.str().size());
     return;
   }
-  auto data = recording->get_data();
   effect->set_recording_active(false);
   effect->set_recording_active(true);
   std::ostringstream logStrm;
@@ -100,12 +113,34 @@ void NetScript::_process(float delta)
   case AudioStreamSample::FORMAT_16_BITS: logStrm << "16 "; break;
   case AudioStreamSample::FORMAT_IMA_ADPCM: logStrm << "IMA_ADPCM "; break;
   }
+  auto data = recording->get_data();
+
   logStrm << recording->get_mix_rate() << " " << (recording->is_stereo() ? "stereo" : "mono") << " "
-       << 1.0f * data.size() / sizeof(opus_int16) / 2 / recording->get_mix_rate();
+          << 1.0f * data.size() / sizeof(opus_int16) / 2 / recording->get_mix_rate();
+  auto volume = static_cast<CSGBox *>(get_node("PlayerRigidBody/Volume"));
+  if (data.size() <= 0)
+  {
+    Godot::print("data empty");
+    OStrm strm;
+    WoodsProto proto;
+    proto.ser(strm, state);
+    conn->send(strm.str().data(), strm.str().size());
+    auto s = volume->get_scale();
+    s.y = 0;
+    volume->set_scale(s);
+    return;
+  }
+
+  auto max = *std::max_element((opus_int16 *)data.read().ptr(),
+                               (opus_int16 *)(data.read().ptr() + data.size()));
+
+  auto s = volume->get_scale();
+  s.y = std::max(0.0f, 0.1f * logf(1.0f * max / 0x7fff + 0.0001f) + 1.0f);
+  volume->set_scale(s);
+
   audioBuff.insert(std::end(audioBuff),
                    (opus_int16 *)data.read().ptr(),
                    (opus_int16 *)(data.read().ptr() + data.size()));
-  const auto FrameSize = 960;
   std::array<uint8_t, FrameSize * sizeof(opus_int16) * 2> buff;
   while (audioBuff.size() > FrameSize * 2)
   {
@@ -115,12 +150,16 @@ void NetScript::_process(float delta)
     if (lenOrErr < 0)
     {
       Godot::print(opus_strerror(err));
+      OStrm strm;
+      WoodsProto proto;
+      proto.ser(strm, state);
+      conn->send(strm.str().data(), strm.str().size());
       return;
     }
     state.audio.insert(std::end(state.audio), buff.data(), buff.data() + lenOrErr);
     logStrm << " " << lenOrErr;
   }
-  Godot::print(logStrm.str().c_str());
+  // Godot::print(logStrm.str().c_str());
 
   OStrm strm;
   WoodsProto proto;
@@ -129,42 +168,23 @@ void NetScript::_process(float delta)
   return;
 }
 
-void NetScript::operator()(const Woods::PeersState &peers)
+void NetScript::operator()(const Woods::PeersState &netPeers)
 {
-  auto player = static_cast<RigidBody *>(get_node("Player"));
-  while (peers.size() != this->peers.size())
-  {
-    if (peers.size() > this->peers.size())
-    {
-      auto newPeer = static_cast<RigidBody *>(player->duplicate());
-      newPeer->set_visible(true);
-      add_child(newPeer);
-      this->peers.push_back(newPeer);
-      Godot::print("peer entered");
-    }
-    if (peers.size() < this->peers.size())
-    {
-      this->peers.back()->queue_free();
-      this->peers.pop_back();
-      Godot::print("peer left");
-    }
-  }
-  size_t idx = 0;
-  for (const auto &peer : peers)
-  {
-    auto thisPeer = this->peers[idx];
-    Vector3 translation;
-    translation.x = peer.pos.x;
-    translation.y = peer.pos.y;
-    translation.z = peer.pos.z;
+  auto dummyPlayer = get_node("Player");
 
-    thisPeer->set_translation(translation);
-    Vector3 rotation;
-    rotation.x = peer.rot.x;
-    rotation.y = peer.rot.y;
-    rotation.z = peer.rot.z;
-    thisPeer->set_rotation(rotation);
-    ++idx;
+  for (const auto &netPeer : netPeers)
+  {
+    auto iter = peers.find(netPeer.id);
+    if (iter == std::end(peers))
+    {
+      std::ostringstream strm;
+      strm << "peer entered: " << netPeer.id;
+      Godot::print(strm.str().c_str());
+      iter = this->peers.try_emplace(netPeer.id, netPeer.id, dummyPlayer).first;
+      add_child(iter->second.getNode());
+    }
+    auto &thisPeer = iter->second;
+    thisPeer.setState(netPeer);
   }
 }
 
