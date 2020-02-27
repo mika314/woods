@@ -23,7 +23,8 @@ namespace Woods
     uint64_t id{};
     Vec3 pos;
     Vec3 rot;
-    std::vector<unsigned char> audio;
+    using AudioFrame = std::vector<unsigned char>;
+    std::vector<AudioFrame> audio;
 #define SER_PROPERTY_LIST \
   SER_PROPERTY(id);       \
   SER_PROPERTY(pos);      \

@@ -74,7 +74,6 @@ void NetScript::_physics_process(float delta)
     return;
 
   auto player = static_cast<RigidBody *>(get_node("PlayerRigidBody"));
-  Woods::ClientState state;
   auto translation = player->get_translation();
   state.pos.x = translation.x;
   state.pos.y = translation.y;
@@ -90,7 +89,8 @@ void NetScript::_physics_process(float delta)
     OStrm strm;
     WoodsProto proto;
     proto.ser(strm, state);
-    conn->send(strm.str().data(), strm.str().size());
+    if (conn->send(strm.str().data(), strm.str().size()))
+      state.audio.clear();
     return;
   }
   currentTime -= FrameDuarion;
@@ -100,7 +100,8 @@ void NetScript::_physics_process(float delta)
     OStrm strm;
     WoodsProto proto;
     proto.ser(strm, state);
-    conn->send(strm.str().data(), strm.str().size());
+    if (conn->send(strm.str().data(), strm.str().size()))
+      state.audio.clear();
     return;
   }
   effect->set_recording_active(false);
@@ -124,7 +125,8 @@ void NetScript::_physics_process(float delta)
     OStrm strm;
     WoodsProto proto;
     proto.ser(strm, state);
-    conn->send(strm.str().data(), strm.str().size());
+    if (conn->send(strm.str().data(), strm.str().size()))
+      state.audio.clear();
     auto s = volume->get_scale();
     s.y = 0;
     volume->set_scale(s);
@@ -153,10 +155,11 @@ void NetScript::_physics_process(float delta)
       OStrm strm;
       WoodsProto proto;
       proto.ser(strm, state);
-      conn->send(strm.str().data(), strm.str().size());
+      if (conn->send(strm.str().data(), strm.str().size()))
+        state.audio.clear();
       return;
     }
-    state.audio.insert(std::end(state.audio), buff.data(), buff.data() + lenOrErr);
+    state.audio.emplace_back(buff.data(), buff.data() + lenOrErr);
     logStrm << " " << lenOrErr;
   }
   // Godot::print(logStrm.str().c_str());
@@ -164,7 +167,8 @@ void NetScript::_physics_process(float delta)
   OStrm strm;
   WoodsProto proto;
   proto.ser(strm, state);
-  conn->send(strm.str().data(), strm.str().size());
+  if (conn->send(strm.str().data(), strm.str().size()))
+    state.audio.clear();
   return;
 }
 

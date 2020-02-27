@@ -32,4 +32,5 @@ private:
   OpusEncoder *enc{nullptr};
   float currentTime{-1.0f};
   std::vector<opus_int16> audioBuff;
+  Woods::ClientState state;
 };

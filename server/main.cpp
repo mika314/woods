@@ -21,10 +21,9 @@ int main()
       IStrm strm(buff, buff + sz);
       proto.deser(strm,
                   overloaded{[&client, &clients, conn](const Woods::ClientState &state) {
-                               auto tmpId = client.id;
-                               client = state;
-                               client.id = tmpId;
-                               if (!client.audio.empty())
+                               auto tmp = state;
+                               tmp.id = client.id;
+                               if (!state.audio.empty())
                                {
                                  for (auto &peer : clients)
                                  {
@@ -36,10 +35,16 @@ int main()
                                    OStrm strm;
                                    proto.ser(strm, peersState);
 
-                                   peer.first->send(strm.str().data(), strm.str().size());
+                                   if (!peer.first->send(strm.str().data(), strm.str().size()))
+                                   {
+                                     auto &audio = peer.second.audio;
+                                     audio.insert(
+                                       std::end(audio), std::begin(tmp.audio), std::end(tmp.audio));
+                                   }
                                  }
                                }
-                               client.audio.clear();
+                               client.pos = tmp.pos;
+                               client.rot = tmp.rot;
                              },
                              [](const Woods::PeersState &value) {
                                LOG("Unexpected", typeid(value).name());
@@ -66,7 +71,8 @@ int main()
         OStrm strm;
         proto.ser(strm, peersState);
 
-        client.first->send(strm.str().data(), strm.str().size());
+        if (client.first->send(strm.str().data(), strm.str().size()))
+          client.second.audio.clear();
       }
     },
     std::chrono::milliseconds{1000 / 100},

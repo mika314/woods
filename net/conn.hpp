@@ -24,7 +24,7 @@ namespace Net
     Conn(const Conn &) = delete;
     Conn &operator=(const Conn &) = delete;
     ~Conn();
-    auto send(const char *buff, size_t size) -> void;
+    auto send(const char *buff, size_t size) -> bool;
     std::function<void(const char *buff, size_t)> onRecv{nullptr};
     std::function<void()> onConn{nullptr};
     std::function<void()> onDisconn{nullptr};

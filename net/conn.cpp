@@ -348,10 +348,10 @@ namespace Net
     setup(internal->chachaRecv);
   }
 
-  auto Conn::send(const char *buff, size_t size) -> void
+  auto Conn::send(const char *buff, size_t size) -> bool
   {
     if (isSending)
-      return;
+      return false;
     const int32_t sz = size;
     tmpBuff.resize(sizeof(sz) + size);
     std::copy((const char *)&sz, (const char *)&sz + sizeof(sz), std::begin(tmpBuff));
@@ -366,7 +366,7 @@ namespace Net
     {
       LOG(this, "Error:", error_to_string(err));
       disconn();
-      return;
+      return true;
     }
     uv_buf_t buffs[1];
     buffs[0].base = outBuff.data();
@@ -383,5 +383,6 @@ namespace Net
       }
       conn->isSending = false;
     });
+    return true;
   }
 } // namespace Net
