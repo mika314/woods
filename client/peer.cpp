@@ -1,5 +1,6 @@
 #include "peer.hpp"
 #include "frame_size.hpp"
+#include <net/perf.hpp>
 #include <AudioStreamPlayer3D.hpp>
 
 using namespace godot;
@@ -30,6 +31,7 @@ RigidBody *Peer::getNode()
 
 void Peer::setState(const Woods::ClientState &state)
 {
+  Perf perf(__func__);
   Vector3 translation;
   translation.x = state.pos.x;
   translation.y = state.pos.y;
@@ -43,22 +45,13 @@ void Peer::setState(const Woods::ClientState &state)
   node->set_rotation(rotation);
   for (const auto &audioFrame : state.audio)
   {
-    std::array<opus_int16, FrameSize * 2> pcm;
-    auto lenOrErr =
-      opus_decode(dec, audioFrame.data(), audioFrame.size(), pcm.data(), FrameSize, 0);
-    if (lenOrErr < 0)
-    {
-      Godot::print(opus_strerror(err));
-      return;
-    }
-
     std::ostringstream strm;
     // strm << "decoded data from: " << id << " size: " << lenOrErr;
     // Godot::print(strm.str().c_str());
 
-    audio.insert(std::end(audio), pcm.data(), pcm.data() + lenOrErr * 2);
+    audio.insert(std::end(audio), std::begin(audioFrame), std::end(audioFrame));
 
-    auto max = *std::max_element(pcm.data(), pcm.data() + lenOrErr * 2);
+    auto max = *std::max_element(std::begin(audioFrame), std::end(audioFrame));
     auto s = node->get_scale();
     s.y = std::max(0.0f, 0.1f * logf(1.0f * max / 0x7fff + 0.0001f) + 1.0f);
     node->set_scale(s);
@@ -69,6 +62,7 @@ void Peer::process()
 {
   if (audio.empty())
     return;
+  Perf perf(__func__);
   size_t cnt = 0u;
   for (auto to_fill = playback->get_frames_available(); to_fill > 0 && cnt < audio.size() / 2;
        --to_fill, ++cnt)

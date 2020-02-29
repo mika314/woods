@@ -1,4 +1,5 @@
 #include "conn.hpp"
+#include "perf.hpp"
 #include <cstring>
 #include <iomanip>
 #include <iostream>
@@ -230,6 +231,7 @@ namespace Net
 
   auto Conn::onRead(int nread, const char *encBuff) -> void
   {
+    Perf perf(__func__);
     if (nread == UV_EOF || nread < 0)
     {
       if (onDisconn)
@@ -352,6 +354,7 @@ namespace Net
   {
     if (isSending)
       return false;
+    Perf perf(__func__);
     const int32_t sz = size;
     tmpBuff.resize(sizeof(sz) + size);
     std::copy((const char *)&sz, (const char *)&sz + sizeof(sz), std::begin(tmpBuff));

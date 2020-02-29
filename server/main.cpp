@@ -9,50 +9,55 @@
 
 int main()
 {
-  static_assert(Internal::IsSerializableClassV<Woods::ClientState>);
+  auto done = false;
   Sched sched;
   std::unordered_map<Net::Conn *, Woods::ClientState> clients;
-  Net::Server server(sched, PrivateKey, 42069, [&clients](Net::Conn *conn) {
+  Net::Server server(sched, PrivateKey, 42069, [&clients, &done](Net::Conn *conn) {
     std::cout << "new connection: " << conn << std::endl;
     auto ret = clients.emplace(conn, Woods::ClientState{reinterpret_cast<std::uintptr_t>(conn)});
     auto &client = ret.first->second;
-    conn->onRecv = [&client, conn, &clients](const char *buff, size_t sz) {
+    conn->onRecv = [&client, conn, &clients, &done](const char *buff, size_t sz) {
       WoodsProto proto;
       IStrm strm(buff, buff + sz);
-      proto.deser(strm,
-                  overloaded{[&client, &clients, conn](const Woods::ClientState &state) {
-                               auto tmp = state;
-                               tmp.id = client.id;
-                               if (!state.audio.empty())
-                               {
-                                 for (auto &peer : clients)
-                                 {
-                                   if (peer.first == conn)
-                                     continue;
-                                   Woods::PeersState peersState;
-                                   peersState.push_back(client);
-                                   WoodsProto proto;
-                                   OStrm strm;
-                                   proto.ser(strm, peersState);
+      proto.deser(
+        strm,
+        overloaded{[&client, &clients, conn](const Woods::ClientState &state) {
+                     auto tmp = state;
+                     tmp.id = client.id;
+                     if (!state.audio.empty())
+                     {
+                       for (auto &peer : clients)
+                       {
+                         if (peer.first == conn)
+                           continue;
+                         Woods::PeersState peersState;
+                         peersState.push_back(client);
+                         WoodsProto proto;
+                         OStrm strm;
+                         proto.ser(strm, peersState);
 
-                                   if (!peer.first->send(strm.str().data(), strm.str().size()))
-                                   {
-                                     auto &audio = peer.second.audio;
-                                     audio.insert(
-                                       std::end(audio), std::begin(tmp.audio), std::end(tmp.audio));
-                                   }
-                                 }
-                               }
-                               client.pos = tmp.pos;
-                               client.rot = tmp.rot;
-                             },
-                             [](const Woods::PeersState &value) {
-                               LOG("Unexpected", typeid(value).name());
-                             }});
+                         if (!peer.first->send(strm.str().data(), strm.str().size()))
+                         {
+                           auto &audio = peer.second.audio;
+                           audio.insert(
+                             std::end(audio), std::begin(tmp.audio), std::end(tmp.audio));
+                         }
+                       }
+                     }
+                     client.pos = tmp.pos;
+                     client.rot = tmp.rot;
+                   },
+                   [](const Woods::PeersState &value) { LOG("Unexpected", typeid(value).name()); },
+                   [&done](const Woods::Quit &) { done = true; }});
     };
-    conn->onDisconn = [conn, &clients] {
+    conn->onDisconn = [conn, &clients, &done] {
       LOG("Peer", conn, "is disconnected");
       clients.erase(conn);
+      if (clients.empty())
+      {
+        LOG("Exiting");
+        done = true;
+      }
     };
   });
 
@@ -77,6 +82,6 @@ int main()
     },
     std::chrono::milliseconds{1000 / 100},
     true);
-  for (;;)
+  while (!done)
     sched.process();
 }

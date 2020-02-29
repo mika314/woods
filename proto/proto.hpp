@@ -23,7 +23,7 @@ namespace Woods
     uint64_t id{};
     Vec3 pos;
     Vec3 rot;
-    using AudioFrame = std::vector<unsigned char>;
+    using AudioFrame = std::vector<int16_t>;
     std::vector<AudioFrame> audio;
 #define SER_PROPERTY_LIST \
   SER_PROPERTY(id);       \
@@ -34,7 +34,14 @@ namespace Woods
 #undef SER_PROPERTY_LIST
   };
 
+  struct Quit
+  {
+#define SER_PROPERTY_LIST
+    SER_DEFINE_PROPERTIES()
+#undef SER_PROPERTY_LIST
+  };
+
   using PeersState = std::vector<ClientState>;
 } // namespace Woods
 
-using WoodsProto = Proto<Woods::ClientState, Woods::PeersState>;
+using WoodsProto = Proto<Woods::ClientState, Woods::PeersState, Woods::Quit>;

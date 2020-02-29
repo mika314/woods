@@ -6,6 +6,7 @@
 #include <AudioStreamPlayer3D.hpp>
 #include <CSGBox.hpp>
 #include <array>
+#include <net/perf.hpp>
 
 void NetScript::_register_methods()
 {
@@ -83,18 +84,19 @@ void NetScript::_physics_process(float delta)
   state.rot.y = rotation.y;
   state.rot.z = rotation.z;
   currentTime += delta;
-  const auto FrameDuarion = 0.04f;
+  const auto FrameDuarion = 0.1f;
   if (currentTime < FrameDuarion)
   {
-    OStrm strm;
-    WoodsProto proto;
-    proto.ser(strm, state);
-    if (conn->send(strm.str().data(), strm.str().size()))
-      state.audio.clear();
     return;
   }
   currentTime -= FrameDuarion;
-  auto recording = effect->get_recording();
+  auto recording = [&effect]() {
+    Perf perf("getRecording");
+    auto ret = effect->get_recording();
+    effect->set_recording_active(false);
+    effect->set_recording_active(true);
+    return ret;
+  }();
   if (!recording.ptr() || !effect->is_recording_active())
   {
     OStrm strm;
@@ -104,8 +106,7 @@ void NetScript::_physics_process(float delta)
       state.audio.clear();
     return;
   }
-  effect->set_recording_active(false);
-  effect->set_recording_active(true);
+
   std::ostringstream logStrm;
   logStrm << "Recording: ";
   switch (recording->get_format())
@@ -143,24 +144,10 @@ void NetScript::_physics_process(float delta)
   audioBuff.insert(std::end(audioBuff),
                    (opus_int16 *)data.read().ptr(),
                    (opus_int16 *)(data.read().ptr() + data.size()));
-  std::array<uint8_t, FrameSize * sizeof(opus_int16) * 2> buff;
   while (audioBuff.size() > FrameSize * 2)
   {
-    auto lenOrErr =
-      opus_encode(enc, (opus_int16 *)audioBuff.data(), FrameSize, buff.data(), buff.size());
+    state.audio.emplace_back(std::begin(audioBuff), std::begin(audioBuff) + FrameSize * 2);
     audioBuff.erase(std::begin(audioBuff), std::begin(audioBuff) + FrameSize * 2);
-    if (lenOrErr < 0)
-    {
-      Godot::print(opus_strerror(err));
-      OStrm strm;
-      WoodsProto proto;
-      proto.ser(strm, state);
-      if (conn->send(strm.str().data(), strm.str().size()))
-        state.audio.clear();
-      return;
-    }
-    state.audio.emplace_back(buff.data(), buff.data() + lenOrErr);
-    logStrm << " " << lenOrErr;
   }
   // Godot::print(logStrm.str().c_str());
 
@@ -193,6 +180,11 @@ void NetScript::operator()(const Woods::PeersState &netPeers)
 }
 
 void NetScript::operator()(const Woods::ClientState &)
+{
+  Godot::print("Not expected: ClientState");
+}
+
+void NetScript::operator()(const Woods::Quit &)
 {
   Godot::print("Not expected: ClientState");
 }
