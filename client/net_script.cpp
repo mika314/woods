@@ -144,11 +144,25 @@ void NetScript::_physics_process(float delta)
   audioBuff.insert(std::end(audioBuff),
                    (opus_int16 *)data.read().ptr(),
                    (opus_int16 *)(data.read().ptr() + data.size()));
+  std::array<uint8_t, FrameSize * sizeof(opus_int16) * 2> buff;
   while (audioBuff.size() > FrameSize * 2)
   {
+    auto lenOrErr =
+      opus_encode(enc, audioBuff.data(), FrameSize, buff.data(), buff.size());
+    if (lenOrErr < 0)
+    {
+      Godot::print(opus_strerror(err));
+      OStrm strm;
+      WoodsProto proto;
+      proto.ser(strm, state);
+      if (conn->send(strm.str().data(), strm.str().size()))
+        state.audio.clear();
+      return;
+    }
     static auto id = 0;
-    state.audio.emplace_back(id++, std::begin(audioBuff), std::begin(audioBuff) + FrameSize * 2);
+    state.audio.emplace_back(id++, std::begin(buff), std::begin(buff) + lenOrErr);
     audioBuff.erase(std::begin(audioBuff), std::begin(audioBuff) + FrameSize * 2);
+
   }
   // Godot::print(logStrm.str().c_str());
 

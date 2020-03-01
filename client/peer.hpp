@@ -15,7 +15,6 @@ public:
   void process();
 
 private:
-  uint64_t id;
   godot::RigidBody *node;
   godot::AudioStreamGeneratorPlayback *playback;
   std::vector<int16_t> audio;

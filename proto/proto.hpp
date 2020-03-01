@@ -25,7 +25,7 @@ namespace Woods
     {
     }
     int id{-1};
-    std::vector<int16_t> audio;
+    std::vector<unsigned char> audio;
 #define SER_PROPERTY_LIST \
   SER_PROPERTY(id);       \
   SER_PROPERTY(audio);

@@ -8,7 +8,7 @@ using namespace godot;
 static int err;
 
 Peer::Peer(uint64_t id, Node *aNode)
-  : id(id), node(static_cast<RigidBody *>(aNode->duplicate())), dec(opus_decoder_create(48000, 2, &err))
+  : node(static_cast<RigidBody *>(aNode->duplicate())), dec(opus_decoder_create(48000, 2, &err))
 {
   if (err != OPUS_OK)
     Godot::print(opus_strerror(err));
@@ -45,14 +45,17 @@ void Peer::setState(const Woods::ClientState &state)
   node->set_rotation(rotation);
   for (const auto &audioFrame : state.audio)
   {
-    std::ostringstream strm;
-    // strm << "decoded data from: " << id << " size: " << lenOrErr;
-    // Godot::print(strm.str().c_str());
-    Godot::print(std::to_string(audioFrame.id).c_str());
+    std::array<opus_int16, FrameSize * 2> pcm;
+    auto lenOrErr =
+      opus_decode(dec, audioFrame.audio.data(), audioFrame.audio.size(), pcm.data(), FrameSize, 0);
+    if (lenOrErr < 0)
+    {
+      Godot::print(opus_strerror(err));
+      return;
+    }
+    audio.insert(std::end(audio), std::begin(pcm), std::end(pcm));
 
-    audio.insert(std::end(audio), std::begin(audioFrame.audio), std::end(audioFrame.audio));
-
-    auto max = *std::max_element(std::begin(audioFrame.audio), std::end(audioFrame.audio));
+    auto max = *std::max_element(std::begin(pcm), std::end(pcm));
     auto s = node->get_scale();
     s.y = std::max(0.0f, 0.1f * logf(1.0f * max / 0x7fff + 0.0001f) + 1.0f);
     node->set_scale(s);
