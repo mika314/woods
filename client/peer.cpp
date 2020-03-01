@@ -48,10 +48,11 @@ void Peer::setState(const Woods::ClientState &state)
     std::ostringstream strm;
     // strm << "decoded data from: " << id << " size: " << lenOrErr;
     // Godot::print(strm.str().c_str());
+    Godot::print(std::to_string(audioFrame.id).c_str());
 
-    audio.insert(std::end(audio), std::begin(audioFrame), std::end(audioFrame));
+    audio.insert(std::end(audio), std::begin(audioFrame.audio), std::end(audioFrame.audio));
 
-    auto max = *std::max_element(std::begin(audioFrame), std::end(audioFrame));
+    auto max = *std::max_element(std::begin(audioFrame.audio), std::end(audioFrame.audio));
     auto s = node->get_scale();
     s.y = std::max(0.0f, 0.1f * logf(1.0f * max / 0x7fff + 0.0001f) + 1.0f);
     node->set_scale(s);

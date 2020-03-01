@@ -16,7 +16,7 @@ int main()
     std::cout << "new connection: " << conn << std::endl;
     auto ret = clients.emplace(conn, Woods::ClientState{reinterpret_cast<std::uintptr_t>(conn)});
     auto &client = ret.first->second;
-    conn->onRecv = [&client, conn, &clients, &done](const char *buff, size_t sz) {
+    conn->onRecv = [&client, conn, &clients](const char *buff, size_t sz) {
       WoodsProto proto;
       IStrm strm(buff, buff + sz);
       proto.deser(
@@ -30,25 +30,14 @@ int main()
                        {
                          if (peer.first == conn)
                            continue;
-                         Woods::PeersState peersState;
-                         peersState.push_back(client);
-                         WoodsProto proto;
-                         OStrm strm;
-                         proto.ser(strm, peersState);
-
-                         if (!peer.first->send(strm.str().data(), strm.str().size()))
-                         {
-                           auto &audio = peer.second.audio;
-                           audio.insert(
-                             std::end(audio), std::begin(tmp.audio), std::end(tmp.audio));
-                         }
+                         auto &audio = peer.second.audio;
+                         audio.insert(std::end(audio), std::begin(tmp.audio), std::end(tmp.audio));
                        }
                      }
                      client.pos = tmp.pos;
                      client.rot = tmp.rot;
                    },
-                   [](const Woods::PeersState &value) { LOG("Unexpected", typeid(value).name()); },
-                   [&done](const Woods::Quit &) { done = true; }});
+                   [](const Woods::PeersState &value) { LOG("Unexpected", typeid(value).name()); }});
     };
     conn->onDisconn = [conn, &clients, &done] {
       LOG("Peer", conn, "is disconnected");
@@ -66,7 +55,7 @@ int main()
       for (auto &client : clients)
       {
         Woods::PeersState peersState;
-        for (auto &peer : clients)
+        for (const auto &peer : clients)
         {
           if (peer.first == client.first)
             continue;
@@ -77,7 +66,14 @@ int main()
         proto.ser(strm, peersState);
 
         if (client.first->send(strm.str().data(), strm.str().size()))
-          client.second.audio.clear();
+        {
+          for (auto &peer : clients)
+          {
+            if (peer.first == client.first)
+              continue;
+            peer.second.audio.clear();
+          }
+        }
       }
     },
     std::chrono::milliseconds{1000 / 100},

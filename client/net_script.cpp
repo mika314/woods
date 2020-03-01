@@ -146,7 +146,8 @@ void NetScript::_physics_process(float delta)
                    (opus_int16 *)(data.read().ptr() + data.size()));
   while (audioBuff.size() > FrameSize * 2)
   {
-    state.audio.emplace_back(std::begin(audioBuff), std::begin(audioBuff) + FrameSize * 2);
+    static auto id = 0;
+    state.audio.emplace_back(id++, std::begin(audioBuff), std::begin(audioBuff) + FrameSize * 2);
     audioBuff.erase(std::begin(audioBuff), std::begin(audioBuff) + FrameSize * 2);
   }
   // Godot::print(logStrm.str().c_str());
@@ -180,11 +181,6 @@ void NetScript::operator()(const Woods::PeersState &netPeers)
 }
 
 void NetScript::operator()(const Woods::ClientState &)
-{
-  Godot::print("Not expected: ClientState");
-}
-
-void NetScript::operator()(const Woods::Quit &)
 {
   Godot::print("Not expected: ClientState");
 }

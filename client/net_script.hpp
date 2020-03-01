@@ -23,7 +23,6 @@ public:
 
   void operator()(const Woods::PeersState &);
   void operator()(const Woods::ClientState &);
-  void operator()(const Woods::Quit &);
 
 private:
   Sched sched;
